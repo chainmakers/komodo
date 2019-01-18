@@ -1,4 +1,4 @@
-#include "leveldbwrapper.h"
+#include "dbwrapper.h"
 #include "notarisationdb.h"
 #include "uint256.h"
 #include "cc/eval.h"
@@ -10,7 +10,7 @@
 NotarisationDB *pnotarisations;
 
 
-NotarisationDB::NotarisationDB(size_t nCacheSize, bool fMemory, bool fWipe) : CLevelDBWrapper(GetDataDir() / "notarisations", nCacheSize, fMemory, fWipe, false, 64) { }
+NotarisationDB::NotarisationDB(size_t nCacheSize, bool fMemory, bool fWipe) : CDBWrapper(GetDataDir() / "notarisations", nCacheSize, fMemory, fWipe, false, 64) { }
 
 
 NotarisationsInBlock ScanBlockNotarisations(const CBlock &block, int nHeight)
@@ -26,7 +26,7 @@ NotarisationsInBlock ScanBlockNotarisations(const CBlock &block, int nHeight)
         {
             NotarisationData data;
             if (ParseNotarisationOpReturn(tx, data))
-                if (strlen(data.symbol) >= 5 && strncmp(data.symbol, "TXSCL", 5) == 0)
+                if (IsTXSCL(data.symbol))
                     isTxscl = 1;
         }
 
@@ -46,6 +46,11 @@ NotarisationsInBlock ScanBlockNotarisations(const CBlock &block, int nHeight)
     return vNotarisations;
 }
 
+bool IsTXSCL(const char* symbol)
+{
+    return strlen(symbol) >= 5 && strncmp(symbol, "TXSCL", 5) == 0;
+}
+
 
 bool GetBlockNotarisations(uint256 blockHash, NotarisationsInBlock &nibs)
 {
@@ -62,7 +67,7 @@ bool GetBackNotarisation(uint256 notarisationHash, Notarisation &n)
 /*
  * Write an index of KMD notarisation id -> backnotarisation
  */
-void WriteBackNotarisations(const NotarisationsInBlock notarisations, CLevelDBBatch &batch)
+void WriteBackNotarisations(const NotarisationsInBlock notarisations, CDBBatch &batch)
 {
     int wrote = 0;
     BOOST_FOREACH(const Notarisation &n, notarisations)
@@ -75,7 +80,7 @@ void WriteBackNotarisations(const NotarisationsInBlock notarisations, CLevelDBBa
 }
 
 
-void EraseBackNotarisations(const NotarisationsInBlock notarisations, CLevelDBBatch &batch)
+void EraseBackNotarisations(const NotarisationsInBlock notarisations, CDBBatch &batch)
 {
     BOOST_FOREACH(const Notarisation &n, notarisations)
     {

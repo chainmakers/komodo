@@ -16,6 +16,7 @@
 #include "cc/eval.h"
 #include "cc/utils.h"
 #include "importcoin.h"
+#include "crosschain.h"
 #include "primitives/transaction.h"
 
 
@@ -59,7 +60,7 @@ bool Eval::ImportCoin(const std::vector<uint8_t> params, const CTransaction &imp
 
     // check burn amount
     {
-        uint64_t burnAmount = burnTx.vout[0].nValue;
+        uint64_t burnAmount = burnTx.vout.back().nValue;
         if (burnAmount == 0)
             return Invalid("invalid-burn-amount");
         uint64_t totalOut = 0;
@@ -75,12 +76,8 @@ bool Eval::ImportCoin(const std::vector<uint8_t> params, const CTransaction &imp
 
     // Check proof confirms existance of burnTx
     {
-        uint256 momom, target;
-        if (!GetProofRoot(proof.first, momom))
-            return Invalid("coudnt-load-momom");
-
-        target = proof.second.Exec(burnTx.GetHash());
-        if (momom != proof.second.Exec(burnTx.GetHash()))
+        uint256 target = proof.second.Exec(burnTx.GetHash());
+        if (!CheckMoMoM(proof.first, target))
             return Invalid("momom-check-fail");
     }
 
