@@ -3,6 +3,21 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #include "clientversion.h"
 #include "init.h"
 #include "key_io.h"
@@ -13,6 +28,8 @@
 #include "timedata.h"
 #include "txmempool.h"
 #include "util.h"
+#include "cc/eval.h"
+#include "cc/CCinclude.h"
 #ifdef ENABLE_WALLET
 #include "wallet/wallet.h"
 #include "wallet/walletdb.h"
@@ -61,7 +78,8 @@ int32_t notarizedtxid_height(char *dest,char *txidstr,int32_t *kmdnotarized_heig
 extern uint16_t ASSETCHAINS_P2PPORT,ASSETCHAINS_RPCPORT;
 extern uint32_t ASSETCHAINS_CC;
 extern uint32_t ASSETCHAINS_MAGIC;
-extern uint64_t ASSETCHAINS_COMMISSION,ASSETCHAINS_STAKED,ASSETCHAINS_SUPPLY,ASSETCHAINS_LASTERA;
+extern uint64_t ASSETCHAINS_COMMISSION,ASSETCHAINS_STAKED,ASSETCHAINS_SUPPLY;
+extern uint32_t ASSETCHAINS_LASTERA;
 extern int32_t ASSETCHAINS_LWMAPOS,ASSETCHAINS_SAPLING;
 extern uint64_t ASSETCHAINS_ENDSUBSIDY[],ASSETCHAINS_REWARD[],ASSETCHAINS_HALVING[],ASSETCHAINS_DECAY[];
 extern std::string NOTARY_PUBKEY; extern uint8_t NOTARY_PUBKEY33[];
@@ -208,7 +226,7 @@ UniValue getinfo(const UniValue& params, bool fHelp)
                 }
             }
             if (ASSETCHAINS_LASTERA > 0)
-                obj.push_back(Pair("eras", ASSETCHAINS_LASTERA + 1));
+                obj.push_back(Pair("eras", (int64_t)(ASSETCHAINS_LASTERA + 1)));
             obj.push_back(Pair("reward", acReward));
             obj.push_back(Pair("halving", acHalving));
             obj.push_back(Pair("decay", acDecay));
@@ -1320,7 +1338,70 @@ UniValue txnotarizedconfirmed(const UniValue& params, bool fHelp)
     txid = uint256S((char *)params[0].get_str().c_str());
     notarizedconfirmed=komodo_txnotarizedconfirmed(txid);
     UniValue result(UniValue::VOBJ);
-    result.push_back(Pair("result", notarizedconfirmed));    
+    result.push_back(Pair("result", notarizedconfirmed));
+    return result;
+}
+
+UniValue decodeccopret(const UniValue& params, bool fHelp)
+{
+    CTransaction tx; uint256 tokenid,txid,hashblock;
+    std::vector<uint8_t> vopret,vOpretExtra; uint8_t *script,tokenevalcode;
+    UniValue result(UniValue::VOBJ),array(UniValue::VARR); std::vector<CPubKey> pubkeys;
+
+    if (fHelp || params.size() < 1 || params.size() > 1)
+    {
+        string msg = "decodeccopret scriptPubKey\n"
+            "\nReturns eval code and function id for CC OP RETURN data.\n"           
+
+            "\nArguments:\n"
+            "1. scriptPubKey      (string, required) Hex of scriptPubKey with OP_RETURN data.\n"          
+
+            "\nResult:\n"
+            "{\n"
+            "  eval_code,  (string) Eval code name.\n" 
+            "  function,   (char) Function id char.\n"           
+            "}\n"           
+        ;
+        throw runtime_error(msg);
+    }
+    std::vector<unsigned char> hex(ParseHex(params[0].get_str()));
+    CScript scripthex(hex.begin(),hex.end());
+    if (DecodeTokenOpRet(scripthex,tokenevalcode,tokenid,pubkeys,vOpretExtra)!=0 && tokenevalcode==EVAL_TOKENS && vOpretExtra.size()>0)
+    {
+        UniValue obj(UniValue::VOBJ);
+        GetOpReturnData(scripthex,vopret);
+        script = (uint8_t *)vopret.data();
+        if ( vopret.size() > 1)
+        {        
+            char func[5];
+            sprintf(func,"%c",script[1]);
+            obj.push_back(Pair("eval_code", EvalToStr(script[0])));
+            obj.push_back(Pair("function", func));
+        }
+        else
+        {
+            obj.push_back(Pair("error", "invalid or no CC opret data for Token OP_RETURN"));
+        }
+        array.push_back(obj);
+        if (!E_UNMARSHAL(vOpretExtra, { ss >> vopret; })) return (0);
+    }
+    else GetOpReturnData(scripthex,vopret);
+    script = (uint8_t *)vopret.data();
+    if ( vopret.size() > 1)
+    {        
+        char func[5]; UniValue obj(UniValue::VOBJ);
+        result.push_back(Pair("result", "success"));
+        sprintf(func,"%c",script[1]);        
+        obj.push_back(Pair("eval_code", EvalToStr(script[0])));
+        obj.push_back(Pair("function", func));
+        array.push_back(obj);
+        result.push_back(Pair("OpRets",array));
+    }
+    else
+    {
+        result.push_back(Pair("result", "error"));
+        result.push_back(Pair("error", "invalid or no CC opret data"));
+    }
     return result;
 }
 
